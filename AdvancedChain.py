@@ -30,11 +30,11 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from flask_socketio import SocketIO, emit
 
-# Configure logging
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('BlockchainApp')
 
-# Dataclasses for better type hinting and structure
+
 @dataclass
 class Transaction:
     sender: str
@@ -109,25 +109,25 @@ class Wallet:
 
 class Blockchain:
     def __init__(self, difficulty: int = 4):
-        # Initialize the chain with the genesis block
+        
         self.chain = []
         self.current_transactions = []
         self.nodes = set()
-        self.mining_reward = 50.0  # Initial reward, will be halved every 210,000 blocks
-        self.difficulty = difficulty  # Number of leading zeros required in hash
-        self.target_block_time = 10  # Target time in seconds between blocks
-        self.adjust_difficulty_blocks = 10  # Adjust difficulty every N blocks
-        self.wallets = {}  # Maps public key to wallet object
-        self.pending_transactions = []  # Transactions waiting to be included in blocks
+        self.mining_reward = 50.0  
+        self.difficulty = difficulty 
+        self.target_block_time = 10  
+        self.adjust_difficulty_blocks = 10  
+        self.wallets = {}  
+        self.pending_transactions = []  
         self.miner_thread = None
         self.mining = False
-        self.blockchain_lock = threading.RLock()  # Lock for thread safety
+        self.blockchain_lock = threading.RLock()  
 
-        # Initialize with default admin wallet
+        
         self.admin_wallet = Wallet(name="Admin")
         self.wallets[self.admin_wallet.get_public_key_string()] = self.admin_wallet
 
-        # Create the genesis block
+        
         self.create_genesis_block()
 
     def create_genesis_block(self) -> None:
@@ -169,7 +169,7 @@ class Blockchain:
         """Calculate balance for a given wallet address"""
         balance = 0.0
 
-        # Check all transactions in all blocks
+        
         for block in self.chain:
             for tx in block.transactions:
                 if tx['recipient'] == address:
@@ -184,13 +184,13 @@ class Blockchain:
         if not transactions:
             return hashlib.sha256("empty".encode()).hexdigest()
 
-        # Convert transactions to hash values
+        
         tx_hashes = [hashlib.sha256(json.dumps(tx, sort_keys=True).encode()).hexdigest() for tx in transactions]
 
-        # Keep hashing pairs until we have a single root hash
+        
         while len(tx_hashes) > 1:
             if len(tx_hashes) % 2 != 0:
-                tx_hashes.append(tx_hashes[-1])  # Duplicate last hash if odd number
+                tx_hashes.append(tx_hashes[-1])  
 
             next_level = []
             for i in range(0, len(tx_hashes), 2):
@@ -208,8 +208,7 @@ class Blockchain:
 
         Returns the transaction if valid
         """
-        if sender != "0":  # Mining rewards don't need balance check
-            # Check if sender has enough balance
+        if sender != "0":  
             sender_balance = self.get_balance(sender)
             if sender_balance < amount:
                 raise ValueError(f"Insufficient balance: {sender_balance} < {amount}")
@@ -221,7 +220,7 @@ class Blockchain:
             signature=signature
         )
 
-        # Verify signature for non-mining transactions
+        
         if sender != "0" and signature:
             if not self.verify_transaction(transaction):
                 raise ValueError("Invalid transaction signature")
@@ -232,15 +231,15 @@ class Blockchain:
 
     def verify_transaction(self, transaction: Transaction) -> bool:
         """Verify the signature of a transaction"""
-        if transaction.sender == "0":  # Mining reward, no signature needed
+        if transaction.sender == "0":  
             return True
 
         try:
-            # Get the sender's public key
+           
             sender_key_pem = base64.b64decode(transaction.sender)
             public_key = serialization.load_pem_public_key(sender_key_pem)
 
-            # Verify signature
+            
             signature = base64.b64decode(transaction.signature)
             transaction_hash = transaction.calculate_hash().encode()
 
@@ -263,12 +262,12 @@ class Blockchain:
         if len(self.chain) % self.adjust_difficulty_blocks != 0 or len(self.chain) <= self.adjust_difficulty_blocks:
             return
 
-        # Calculate average time of last N blocks
+        
         recent_blocks = self.chain[-self.adjust_difficulty_blocks:]
         time_taken = recent_blocks[-1].timestamp - recent_blocks[0].timestamp
         avg_time_per_block = time_taken / (self.adjust_difficulty_blocks - 1)
 
-        # Adjust difficulty
+       
         if avg_time_per_block < self.target_block_time * 0.8:
             self.difficulty += 1
             logger.info(f"Difficulty increased to {self.difficulty} (blocks too fast)")
@@ -318,9 +317,9 @@ class Blockchain:
             return None
 
         with self.blockchain_lock:
-            # Get transactions from pending pool
+           
             if not self.pending_transactions:
-                # Create at least a coinbase transaction
+                
                 reward_tx = self.new_transaction(
                     sender="0",
                     recipient=miner_address,
@@ -328,19 +327,19 @@ class Blockchain:
                 )
                 transactions = [reward_tx]
             else:
-                # Add mining reward transaction
+                
                 reward_tx = self.new_transaction(
                     sender="0",
                     recipient=miner_address,
                     amount=self.calculate_mining_reward()
                 )
 
-                # Get up to 10 transactions from pending pool
+               
                 transactions = [reward_tx] + self.pending_transactions[:9]
-                # Remove used transactions
+                
                 self.pending_transactions = self.pending_transactions[9:] if len(self.pending_transactions) > 9 else []
 
-            # Create a new block
+            
             last_block = self.chain[-1]
             merkle_root = self.calculate_merkle_root(transactions)
 
@@ -348,7 +347,7 @@ class Blockchain:
                 index=last_block.index + 1,
                 timestamp=time.time(),
                 transactions=transactions,
-                proof=0,  # Will be set after mining
+                proof=0,  
                 previous_hash=self.hash(last_block),
                 merkle_root=merkle_root,
                 difficulty=self.difficulty,
@@ -356,16 +355,16 @@ class Blockchain:
             )
 
             try:
-                # Find proof of work
+                
                 nonce, block_hash = self.proof_of_work(new_block)
                 new_block.nonce = nonce
-                new_block.proof = int(block_hash, 16) % 10**8  # Convert hash to numeric proof
+                new_block.proof = int(block_hash, 16) % 10**8  
 
-                # Add block to chain
+               
                 self.chain.append(new_block)
                 logger.info(f"New block mined: {new_block.to_dict()}")
 
-                # Adjust difficulty periodically
+                
                 self.adjust_difficulty()
 
                 return new_block
@@ -386,12 +385,11 @@ class Blockchain:
                 try:
                     mined_block = self.mine_block(miner_address)
                     if mined_block:
-                        # Broadcast new block to network
+                       
                         self.broadcast_new_block(mined_block)
                 except Exception as e:
                     logger.error(f"Mining error: {str(e)}")
-                    time.sleep(5)  # Pause before retrying
-
+                    time.sleep(5)  
         self.miner_thread = threading.Thread(target=mining_thread)
         self.miner_thread.daemon = True
         self.miner_thread.start()
@@ -429,23 +427,19 @@ class Blockchain:
         """
         blocks = [Block.from_dict(block) for block in chain]
 
-        # Check each block
         for i in range(1, len(blocks)):
             current_block = blocks[i]
             previous_block = blocks[i-1]
 
-            # Check hash of previous block
             if current_block.previous_hash != self.hash(previous_block):
                 logger.error(f"Invalid previous hash at block {current_block.index}")
                 return False
 
-            # Check proof of work
             block_hash = self.hash(current_block)
             if block_hash[:current_block.difficulty] != '0' * current_block.difficulty:
                 logger.error(f"Invalid proof of work at block {current_block.index}")
                 return False
 
-            # Verify merkle root
             if current_block.merkle_root != self.calculate_merkle_root(current_block.transactions):
                 logger.error(f"Invalid merkle root at block {current_block.index}")
                 return False
@@ -463,7 +457,6 @@ class Blockchain:
         replaced = False
         max_length = len(self.chain)
 
-        # Fetch chains from all nodes
         for node in self.nodes:
             try:
                 response = requests.get(f'http://{node}/chain')
@@ -473,7 +466,6 @@ class Blockchain:
                     length = data['length']
                     chain = data['chain']
 
-                    # Check if chain is longer and valid
                     if length > max_length and self.valid_chain(chain):
                         max_length = length
                         with self.blockchain_lock:
@@ -515,7 +507,6 @@ class Blockchain:
         for block in self.chain:
             for tx in block.transactions:
                 if tx['sender'] == address or tx['recipient'] == address:
-                    # Add block info to transaction
                     tx_with_block = tx.copy()
                     tx_with_block['block_index'] = block.index
                     tx_with_block['block_timestamp'] = block.timestamp
@@ -527,32 +518,27 @@ class Blockchain:
         """Generate a visualization of the blockchain as a PNG image in base64"""
         G = nx.DiGraph()
 
-        # Add nodes and edges for blocks
         for i, block in enumerate(self.chain):
             G.add_node(f"Block {block.index}", shape='box', label=f"Block {block.index}\nHash: {self.hash(block)[:6]}...")
 
             if i > 0:
                 G.add_edge(f"Block {self.chain[i-1].index}", f"Block {block.index}")
 
-        # Add transaction nodes for the last 3 blocks (to avoid clutter)
         for block in self.chain[-3:]:
             for i, tx in enumerate(block.transactions):
                 tx_id = f"Tx {tx.get('transaction_id', i)[:6]}"
                 G.add_node(tx_id, shape='ellipse', label=f"{tx['sender'][:6]}... → {tx['recipient'][:6]}...\nAmount: {tx['amount']}")
                 G.add_edge(f"Block {block.index}", tx_id)
 
-        # Create the plot
         plt.figure(figsize=(12, 8))
         pos = nx.spring_layout(G, seed=42)
         nx.draw(G, pos, with_labels=True, node_color='skyblue', node_size=2000,
                 font_size=8, font_weight='bold', arrows=True)
 
-        # Save plot to a bytes buffer
         buf = io.BytesIO()
         plt.savefig(buf, format='png')
         buf.seek(0)
 
-        # Convert to base64 for embedding in HTML
         img_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close()
 
@@ -570,18 +556,15 @@ class Blockchain:
         }
 
 
-# Flask application setup
 app = Flask(__name__, template_folder='templates')
 app.secret_key = os.urandom(24)
 socketio = SocketIO(app)
 
-# Initialize blockchain
 blockchain = Blockchain(difficulty=4)
 
 @app.route('/')
 def index():
     """Render the main dashboard"""
-    # Get blockchain statistics
     stats = {
         'blocks': len(blockchain.chain),
         'transactions': sum(len(block.transactions) for block in blockchain.chain),
@@ -592,10 +575,8 @@ def index():
         'mining_status': "Active" if blockchain.mining else "Inactive"
     }
 
-    # Generate blockchain visualization
     blockchain_graph = blockchain.generate_blockchain_visualization()
 
-    # Get current wallet info
     current_wallet = None
     wallet_address = session.get('wallet_address')
     if wallet_address and wallet_address in blockchain.wallets:
@@ -605,7 +586,6 @@ def index():
             'balance': blockchain.get_balance(wallet_address)
         }
 
-    # Render template with data
     return render_template('index.html',
                            stats=stats,
                            blockchain_graph=blockchain_graph,
@@ -618,7 +598,6 @@ def create_wallet():
     name = request.form.get('name', '')
     wallet = blockchain.create_wallet(name)
 
-    # Store in session
     address = wallet.get_public_key_string()
     session['wallet_address'] = address
 
@@ -656,7 +635,6 @@ def new_transaction():
         blockchain.new_transaction(tx.sender, tx.recipient, tx.amount, tx.signature)
         flash('Transaction created successfully', 'success')
 
-        # Emit to WebSocket
         socketio.emit('new_transaction', tx.to_dict())
     except Exception as e:
         flash(f'Error: {str(e)}', 'error')
@@ -705,7 +683,6 @@ def receive_block():
     block_data = data['block']
     block = Block.from_dict(block_data)
 
-    # Validate block
     if blockchain.valid_chain([b.to_dict() for b in blockchain.chain] + [block.to_dict()]):
         blockchain.chain.append(block)
         socketio.emit('new_block', block.to_dict())
@@ -762,20 +739,17 @@ def get_stats():
     }
     return jsonify(stats), 200
 
-# WebSocket events
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection"""
     emit('blockchain_update', blockchain.to_dict())
 
-# HTML Templates (we'll use a simple string here, but in practice you'd use separate files)
 @app.before_request
 def before_request():
     """Create templates directory and files if they don't exist"""
     if not os.path.exists('templates'):
         os.makedirs('templates')
 
-    # Create index.html template
     with open('templates/index.html', 'w') as f:
         f.write("""
 <!DOCTYPE html>
